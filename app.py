@@ -6,17 +6,17 @@ from flask_cors import CORS
 import serial, threading, time, json, random, os, math
 
 ##### ENVIRONMENT #####
-environment = "mock"  # "prod" | "dev" | "mock"
+environment = "dev"  # "prod" | "dev" | "mock"
 #######################
 
 app = Flask(__name__, static_folder="./static", static_url_path="/")
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 # Serial setup depending on environment
 if environment == "prod":
 	ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=1)
 elif environment == "dev":
-	ser = serial.Serial("COM3", 9600, timeout=1)
+	ser = serial.Serial("COM3", 115200, timeout=1)
 else:
 	ser = None
 
@@ -162,24 +162,27 @@ def mock_reader():
 def reader():
 	global latest_data
 	capacity = 3600
+	increment = 1/60
 	while True:
 		line = ser.readline().decode().strip()
-		# 11003;35;24;72;100000
-		# timestamp;hız;sıcaklık;voltage;watt
+		# 11003;35;24;72;100000;31
+		# timestamp;hız;sıcaklık;voltage;watt;soc
 		if line:
 			try:
+				print(line)
 				parts = line.split(";")
-				latest_data["timestamp"] = parts[0]
-				latest_data["speed"] = parts[1]
-				latest_data["temperature"] = parts[2]
-				latest_data["voltage"] = parts[3]
-				latest_data["wh"] = parts[4]
+				latest_data["timestamp"] = int(parts[0])
+				latest_data["speed"] = float(parts[1])
+				latest_data["temperature"] = float(parts[2])
+				latest_data["voltage"] = float(parts[3])
+				latest_data["wh"] = float(parts[4])
 				# SoC calculation, change when arduino gives this
-				latest_data["soc"] = (latest_data["wh"] / capacity) * 100 # parts[5]
+				latest_data["soc"] = float(parts[5])
 				socketio.emit("telemetry", latest_data)
 			except:
+				print("error")
 				pass
-
+		time.sleep(increment)
 # ---------- SSE FALLBACK ----------
 @app.route("/data")
 def data():
